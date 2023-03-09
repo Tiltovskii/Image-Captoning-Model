@@ -3,6 +3,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.models as models
 from torchvision.models import ResNet50_Weights
+from numpy.random import choice
+import numpy as np
 
 
 class EncoderCNN(nn.Module):
@@ -76,6 +78,7 @@ class DecoderRNN(nn.Module):
 
         self.fcn = nn.Linear(decoder_dim, vocab_size)
         self.drop = nn.Dropout(drop_prob)
+        self.sm = nn.Softmax(dim=1)
 
     def forward(self, features, captions):
 
@@ -105,47 +108,61 @@ class DecoderRNN(nn.Module):
 
         return preds, alphas
 
-    def generate_caption(self, features, max_len=20):
+    def generate_caption(self, features, bs=3, temperature=20, max_len=20):
         # Inference part
         # Given the image features generate the captions
 
-        batch_size = features.size(0)
         h, c = self.init_hidden_state(features)  # (batch_size, decoder_dim)
 
-        alphas = []
-
-        # starting input
-        word = torch.tensor(self.vocab.stoi['<SOS>']).view(1, -1).to(self.device)
-        embeds = self.embedding(word)
-
-        captions = []
+        storage = [[([1], [], 1)] * bs][0]
+        end_storage = []
 
         for i in range(max_len):
-            alpha, context = self.attention(features, h)
+            new_storage = []
+            for indcaps, alphas, prob in storage:
+                word = torch.tensor(indcaps[-1]).view(1, -1).to(self.device)
+                embeds = self.embedding(word)
 
-            # store the apla score
-            alphas.append(alpha.cpu().detach().numpy())
+                alpha, context = self.attention(features, h)
 
-            lstm_input = torch.cat((embeds[:, 0], context), dim=1)
-            h, c = self.lstm_cell(lstm_input, (h, c))
-            output = self.fcn(self.drop(h))
-            output = output.view(batch_size, -1)
+                # store the apla score
+                alphas.append(alpha.cpu().detach().numpy())
 
-            # select the word with most val
-            predicted_word_idx = output.argmax(dim=1)
+                lstm_input = torch.cat((embeds[:, 0], context), dim=1)
+                h, c = self.lstm_cell(lstm_input, (h, c))
+                output = self.sm(self.fcn(self.drop(h)) / temperature)
+                output = output.view(-1).numpy()
+                next_indcaps = choice(output.size, p=output, size=bs, replace=False)
+                next_probs = output[next_indcaps]
 
-            # save the generated word
-            captions.append(predicted_word_idx.item())
+                for next_prob, next_indcap in zip(next_probs, next_indcaps):
+                    new_storage += [(indcaps + [int(next_indcap)], alphas, prob * next_prob)]
 
-            # end if <EOS detected>
-            if self.vocab.itos[predicted_word_idx.item()] == "<EOS>":
+            new_storage = sorted(new_storage, key=lambda x: -x[2])[:bs]
+
+            storage = []
+            for indcaps, alphas, prob in new_storage:
+                if self.vocab.itos[indcaps[-1]] != "<EOS>":
+                    storage += [(indcaps, alphas, prob)]
+                else:
+                    end_storage += [(indcaps, alphas, prob)]
+                    bs -= 1
+
+            if not storage:
                 break
 
-            # send generated word as the next caption
-            embeds = self.embedding(predicted_word_idx.unsqueeze(0))
+        if not end_storage:
+            end_storage = storage
 
-        # covert the vocab idx to words and return sentence
-        return [self.vocab.itos[idx] for idx in captions[:-1]], alphas
+        end_storage = sorted(end_storage, key=lambda x: -x[2] ** (1 / len(x[0])))
+        probs = np.array([item[2] ** (1 / len(item[0])) for item in end_storage])
+        indx = choice(len(end_storage), p=probs / sum(probs))
+        indcaps, alphas, prob = end_storage[indx]
+
+        if self.vocab.itos[indcaps[-1]] == '<EOS>':
+            return [self.vocab.itos[idx] for idx in indcaps[1:-1]], alphas
+        else:
+            return [self.vocab.itos[idx] for idx in indcaps[1:]], alphas
 
     def init_hidden_state(self, encoder_out):
         mean_encoder_out = encoder_out.mean(dim=1)
@@ -166,6 +183,7 @@ class EncoderDecoder(nn.Module):
             encoder_dim=encoder_dim,
             decoder_dim=decoder_dim,
             vocab=vocab,
+            drop_prob=drop_prob,
             device=device
         )
 
@@ -173,4 +191,3 @@ class EncoderDecoder(nn.Module):
         features = self.encoder(images)
         outputs = self.decoder(features, captions)
         return outputs
-

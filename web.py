@@ -92,7 +92,7 @@ result = st.button('Описать изображение')
 # Если кнопка нажата, то запускаем распознавание изображения
 if result and img:
     img_tensor = img_to_tensor(img)
-    caps, alphas = get_caps_from_image(model, img_tensor)
+    caps, alphas = get_caps_from_image(model, img_tensor, bs=1, temperature=1.2, max_len=30)
     write_caps(caps)
     with st.spinner("Рисуем attention map! :sunglasses:"):
         plot_attention(img_tensor, caps, alphas)

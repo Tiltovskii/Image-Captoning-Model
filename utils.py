@@ -17,12 +17,15 @@ def img_to_tensor(img):
 
 
 # generate caption
-def get_caps_from_image(model, img_tensor, device='cpu'):
+def get_caps_from_image(model, img_tensor, bs=3, temperature=20, max_len=20, device='cpu'):
     # generate the caption
     model.eval()
     with torch.no_grad():
         features = model.encoder(img_tensor.to(device))
-        caps, alphas = model.decoder.generate_caption(features)
+        caps, alphas = model.decoder.generate_caption(features,
+                                                      bs=bs,
+                                                      temperature=temperature,
+                                                      max_len=max_len)
 
     return caps, alphas
 
