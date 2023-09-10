@@ -8,11 +8,12 @@ from torch.utils.data import Dataset
 from torch.nn.utils.rnn import pad_sequence
 from PIL import Image
 import json
+from spacy.lang.en import English
 
 
 class Vocabulary:
     # tokenizer
-    spacy_eng = spacy.load("en_core_web_sm")
+    spacy_eng = English()
 
     def __init__(self, freq_threshold):
         # setting the pre-reserved tokens int to string tokens
