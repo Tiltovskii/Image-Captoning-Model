@@ -10,7 +10,7 @@ import numpy as np
 class EncoderCNN(nn.Module):
     def __init__(self):
         super(EncoderCNN, self).__init__()
-        resnet = models.resnet50(weights=ResNet50_Weights.DEFAULT)
+        resnet = torch.jit.load('model_weights/resnet50.pth').eval()
         for param in resnet.parameters():
             param.requires_grad_(False)
 
