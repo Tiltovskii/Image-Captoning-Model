@@ -1,8 +1,6 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torchvision.models as models
-from torchvision.models import ResNet50_Weights
 from numpy.random import choice
 import numpy as np
 
