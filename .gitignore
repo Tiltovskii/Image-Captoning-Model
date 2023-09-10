@@ -1,0 +1,4 @@
+venv
+.dockerignore
+create_model.py
+.idea
